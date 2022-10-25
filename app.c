@@ -72,7 +72,7 @@ uint32_t latency_msec_array[MAX_CONNECTIONS];
 uint32_t elapsed_time_array[MAX_CONNECTIONS];;
 
 static uint64_t tick_start, tick_end;
-static uint64_t latency_msec, elapsed_time;
+static uint32_t latency_msec, elapsed_time;
 static uint8_t received_cnt = 0;
 
 static uint8_t connections_finished = 0;
