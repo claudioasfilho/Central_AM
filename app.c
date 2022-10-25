@@ -42,7 +42,7 @@
 #define PAYLOAD_LENGTH    5
 #define MAX_CONNECTIONS   2
 
-#define CONN_INTERVAL     32 //40 msec
+#define CONN_INTERVAL     80 //40 msec
 
 //1s is 32768 tick
 #define TIMER_1S_PERIOD 32768
@@ -68,6 +68,7 @@ static uint16_t v_major, v_minor, v_patch;
 
 volatile uint64_t tick_start_array[MAX_CONNECTIONS];
 volatile uint64_t tick_end_array[MAX_CONNECTIONS];
+volatile uint8_t received_cnt_array[MAX_CONNECTIONS];
 //uint32_t latency_msec_array[MAX_CONNECTIONS];
 //uint32_t elapsed_time_array[MAX_CONNECTIONS];;
 
@@ -78,6 +79,7 @@ static uint8_t received_cnt = 0;
 static uint8_t connections_finished = 0;
 static uint8_t PHY_Change_finished = 0;
 static uint8_t Connection_Handle = 0;
+static uint8_t Responses_received = 0;
 
 /// Type of System State Machine
 typedef enum {
@@ -186,10 +188,6 @@ SL_WEAK void app_process_action(void)
 {
   sl_status_t sc;
 
-//  if(( GPIO_PinInGet(gpioPortD,2)==0)&&(num_of_connections >= MAX_CONNECTIONS))
-//    {
-//      sl_bt_external_signal(SIGNAL_BTN_PRESS);
-//    }
 
   switch(SM_status)
   {
@@ -258,64 +256,64 @@ SL_WEAK void app_process_action(void)
         {
           Connection_Handle = 0;
           SM_status = WRITTING;
+
+          //Initializes received_cnt_array with Zeros
+          for (uint8_t i = 0; i < MAX_CONNECTIONS; i++)
+            {
+              received_cnt_array[i] = 0;
+            }
+          Responses_received = 0;
+
         }
               break;
 
 
       case WRITTING:
         {
-            received_cnt = 0;
+
 
             if ((conn_handles[Connection_Handle] != 0xFF)&&(Connection_Handle<num_of_connections))
               {
-#if 1
+                //received_cnt[conn_handles[Connection_Handle]] = 0;
+
                 tick_start_array[conn_handles[Connection_Handle]] = sl_sleeptimer_get_tick_count64();
-                app_log("tick_start %d \n\r", tick_start_array[conn_handles[Connection_Handle]]);
-                app_log("Handle %d \n\r", conn_handles[Connection_Handle]);
-
-#else
-                tick_start =sl_sleeptimer_get_tick_count64();
-                app_log("tick_start %d \n\r", tick_start);
-#endif
-
-
 
                   app_log("Sending data to connection: %d\r\n", conn_handles[Connection_Handle]);
                   sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[Connection_Handle], CHAR_HANDLE, PAYLOAD_LENGTH, payload, payload_sent_len);
                   app_assert_status(sc);
-                  SM_status =  WAITING_FOR_RESPONSE;
-                  //tick_start = tick_start_array[Connection_Handle];
+                  //SM_status =  WAITING_FOR_RESPONSE;
                }
+            //In case a device gets disconnected
             else Connection_Handle+=1;
 
+            //Increases the Handle and start the Writting process to another device
+            if(Connection_Handle<num_of_connections)
+                        {
+
+                          Connection_Handle+=1;
+
+                        }
+            else if(Connection_Handle==num_of_connections)
+              {
 
 
-//            for (uint8_t i = 0; i < MAX_CONNECTIONS; i++){
-//                if (conn_handles[i] != 0xFF){
-//                    app_log("Sending data to connection: %d\r\n", conn_handles[i]);
-//                    sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[i], CHAR_HANDLE, PAYLOAD_LENGTH, payload, payload_sent_len);
-//                    app_assert_status(sc);
-//                }
-//            }
+                SM_status = WAITING_FOR_RESPONSE;
+
+              }
+
         }
 
         break;
       case WAITING_FOR_RESPONSE:
               {
-                //Do Nothing
+                app_log("Connection_handle: %d\r\n", Connection_Handle);
               }
               break;
 
       case RESPONSE_RECEIVED:
         {
-          if(Connection_Handle<num_of_connections)
-            {
-              //Increases the Handle and start the Writting process to another device
-              Connection_Handle+=1;
-              SM_status = WRITTING;
-            }
-          //Max number of devices have been achieved, restarting the test with the first connected device
-          else
+
+            if (Responses_received==num_of_connections)
             {
               SM_status = BEFORE_WRITTING;
             }
@@ -377,7 +375,8 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
       sc = sl_bt_connection_set_default_parameters(CONN_INTERVAL, CONN_INTERVAL, 0, CONN_INTERVAL * 5, 0, 0xFFFF);
       app_assert_status(sc);
-      app_log("Connection interval set to 40 msec\r\n");
+
+      app_log("Connection interval set to %d msec\r\n",CONN_INTERVAL );
 
       sc = sl_bt_scanner_start(sl_bt_scanner_scan_phy_1m,
                                sl_bt_scanner_discover_generic);
@@ -447,56 +446,26 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
     case sl_bt_evt_gatt_server_attribute_value_id:
       {
-        received_cnt++;
+        received_cnt_array[evt->data.evt_gatt_server_attribute_value.connection]++;
 
-#if 1
+
         tick_end_array[evt->data.evt_gatt_server_attribute_value.connection] = sl_sleeptimer_get_tick_count64();
-        app_log("tick_end %d \n\r",  tick_end_array[evt->data.evt_gatt_server_attribute_value.connection]);
-        app_log("Connection %d\n\r",evt->data.evt_gatt_server_attribute_value.connection);
         elapsed_time = tick_end_array[evt->data.evt_gatt_server_attribute_value.connection] - tick_start_array[evt->data.evt_gatt_server_attribute_value.connection];
-
-
-
-#else
-        tick_end = sl_sleeptimer_get_tick_count64();
-        app_log("tick_end %d \n\r", tick_end);
-        elapsed_time = tick_end - tick_start;
-#endif
-        app_log("Elapsed time in ticks: %d\r\n", elapsed_time);
+        //app_log("Elapsed time in ticks: %d\r\n", elapsed_time);
 
         latency_msec = sl_sleeptimer_tick_to_ms(elapsed_time);
-        app_log("Response received \r\n");
+        //app_log("Response received for Connection %d \r\n",evt->data.evt_gatt_server_attribute_value.connection);
         app_log("Latency for Connection %d: %d msec\r\n",evt->data.evt_gatt_server_attribute_value.connection, latency_msec);
+        //app_log("Packets received from Connection %d: %d \r\n",evt->data.evt_gatt_server_attribute_value.connection, received_cnt_array[evt->data.evt_gatt_server_attribute_value.connection]);
 
-//        for(uint8_t i=0;i<64;i++)
-//          {
-//            app_log("%02X", evt->data.evt_gatt_server_attribute_value.value.data[i]);
-//          }
-//        app_log("/n/r");
+        for(uint8_t i=0;i<64;i++)
+          {
+            app_log("%02X", evt->data.evt_gatt_server_attribute_value.value.data[i]);
+          }
+        app_log("\n\r");
+        Responses_received++;
 
         SM_status = RESPONSE_RECEIVED;
-
-
-
-
-
-
-
-//      if (received_cnt == MAX_CONNECTIONS){
-//          tick_end = sl_sleeptimer_get_tick_count64();
-//          //app_log("End tick: %d\r\n", tick_end);
-//          elapsed_time = tick_end - tick_start;
-//          //app_log("Elapsed time in ticks: %d\r\n", elapsed_time);
-//          latency_msec = sl_sleeptimer_tick_to_ms(elapsed_time);
-//
-//          for(uint8_t i=0;i<64;i++)
-//            {
-//              app_log("%02X", evt->data.evt_gatt_server_attribute_value.value.data[i]);
-//            }
-//
-//          app_log("\n\rLatency: %d msec\r\n", latency_msec);
-//
-//      }
 
       }
       break;
