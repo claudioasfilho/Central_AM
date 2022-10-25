@@ -66,8 +66,13 @@ static uint8_t num_of_connections = 0;
 
 static uint16_t v_major, v_minor, v_patch;
 
+uint64_t tick_start_array[MAX_CONNECTIONS];
+uint64_t tick_end_array[MAX_CONNECTIONS];
+uint32_t latency_msec_array[MAX_CONNECTIONS];
+uint32_t elapsed_time_array[MAX_CONNECTIONS];;
+
 static uint64_t tick_start, tick_end;
-static uint32_t latency_msec, elapsed_time;
+static uint64_t latency_msec, elapsed_time;
 static uint8_t received_cnt = 0;
 
 static uint8_t connections_finished = 0;
@@ -114,25 +119,6 @@ sl_sleeptimer_timer_handle_t my_sleeptimer_handle;
 // Advertised service UUID
 static const uint8_t advertised_service[2] = { 0xCC, 0xCC };
 
-
-///**************************************************************************//**
-// * Parse advertisements looking for  a header of the peripheral device
-// * @param[in] data: Advertisement packet
-// * @param[in] len:  Length of the advertisement packet
-// * @param[in] ref_data: Reference advertisement header
-// * @param[in] ref_len:  Length of the reference advertisement header
-// *****************************************************************************/
-//static uint8_t find_header_in_advertisement(uint8_t *data, uint8_t *ref_data, uint8_t ref_len)
-//{
-//  if (memcmp(*data, *ref_data, ref_len) == 0) {
-//      app_log("Match \n\r");
-//      return 1;
-//
-//        }
-//
-//  app_log("Not Match \n\r");
-//  return 0;
-//}
 
 /**************************************************************************//**
  * Parse advertisements looking for  a service UUID of the peripheral device
@@ -278,15 +264,18 @@ SL_WEAK void app_process_action(void)
 
       case WRITTING:
         {
-            tick_start = sl_sleeptimer_get_tick_count64();
             received_cnt = 0;
 
             if ((conn_handles[Connection_Handle] != 0xFF)&&(Connection_Handle<num_of_connections))
               {
+                  tick_start =sl_sleeptimer_get_tick_count64();
+                  app_log("tick_start %d \n\r", tick_start);
+                  //tick_start_array[Connection_Handle] = sl_sleeptimer_get_tick_count64();
                   app_log("Sending data to connection: %d\r\n", conn_handles[Connection_Handle]);
                   sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[Connection_Handle], CHAR_HANDLE, PAYLOAD_LENGTH, payload, payload_sent_len);
                   app_assert_status(sc);
                   SM_status =  WAITING_FOR_RESPONSE;
+                  //tick_start = tick_start_array[Connection_Handle];
                }
             else Connection_Handle+=1;
 
@@ -449,13 +438,18 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
     case sl_bt_evt_gatt_server_attribute_value_id:
       {
-        app_log("Response received\r\n");
-        received_cnt++;
+        //tick_end_array[evt->data.evt_gatt_server_attribute_value.connection] = sl_sleeptimer_get_tick_count64();
         tick_end = sl_sleeptimer_get_tick_count64();
+        app_log("tick_end %d \n\r", tick_end);
+
+        received_cnt++;
+        //tick_end = tick_end_array[evt->data.evt_gatt_server_attribute_value.connection];
+       // elapsed_time = tick_end_array[evt->data.evt_gatt_server_attribute_value.connection] - tick_start_array[evt->data.evt_gatt_server_attribute_value.connection];
         elapsed_time = tick_end - tick_start;
         //app_log("Elapsed time in ticks: %d\r\n", elapsed_time);
         latency_msec = sl_sleeptimer_tick_to_ms(elapsed_time);
-        app_log("\n\rLatency: %d msec\r\n", latency_msec);
+        app_log("Response received \r\n");
+        app_log("Latency for Connection %d: %d msec\r\n",evt->data.evt_gatt_server_attribute_value.connection, latency_msec);
 //        for(uint8_t i=0;i<64;i++)
 //          {
 //            app_log("%02X", evt->data.evt_gatt_server_attribute_value.value.data[i]);
