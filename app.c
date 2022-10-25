@@ -44,11 +44,12 @@
 
 #define CONN_INTERVAL     32 //40 msec
 
-
 //1s is 32768 tick
 #define TIMER_1S_PERIOD 32768
 
 #define SCANNING_TIMEOUT 5*TIMER_1S_PERIOD
+
+#define DESIRED_PHY 2 //2M PHY
 
 uint8_t payload[PAYLOAD_LENGTH] = {3};
 
@@ -70,6 +71,7 @@ static uint32_t latency_msec, elapsed_time;
 static uint8_t received_cnt = 0;
 
 static uint8_t connections_finished = 0;
+static uint8_t PHY_Change_finished = 0;
 static uint8_t Connection_Handle = 0;
 
 /// Type of System State Machine
@@ -78,6 +80,8 @@ typedef enum {
   INIT = 0,
   SCANNING_AND_CONNECTING,
   SCAN_STOP,
+  SET_CONNECTION_PHY_2M,
+  WAITING_FOR_PHY_CHANGE,
   WAITING_FOR_TEST_TO_START,
   //CONNECTING_TO_DEVICES,
   BEFORE_WRITTING,
@@ -210,16 +214,48 @@ SL_WEAK void app_process_action(void)
 
         break;
       }
-      case SCAN_STOP:{
+      case SCAN_STOP:
+        {
 
-          app_log("Scanning stopped - Scanning Period concluded\r\n");
+          app_log("Scanning Period concluded- Changing PHY\r\n");
           sc = sl_bt_scanner_stop();
           app_assert_status(sc);
-          SM_status = WAITING_FOR_TEST_TO_START;
+          SM_status = SET_CONNECTION_PHY_2M;
+          Connection_Handle = 0;
 
 
           break;
         }
+      case SET_CONNECTION_PHY_2M:
+              {
+               // app_log("SET_CONNECTION_PHY_2M, %d \n\r", conn_handles[Connection_Handle]);
+                sc = sl_bt_connection_set_preferred_phy(conn_handles[Connection_Handle], DESIRED_PHY, DESIRED_PHY);
+                app_assert_status(sc);
+                PHY_Change_finished = 0;
+                SM_status = WAITING_FOR_PHY_CHANGE;
+              }
+              break;
+
+      case WAITING_FOR_PHY_CHANGE:
+              {
+                if((PHY_Change_finished == 1)&&(Connection_Handle<num_of_connections))
+                  {
+                    app_log("PHY Changed to 2M PHY on Connection %d\r\n", conn_handles[Connection_Handle]);
+                    PHY_Change_finished = 0;
+                    Connection_Handle++;
+                    SM_status = SET_CONNECTION_PHY_2M;
+                  }
+                else
+                  app_log("ConnectionHandle %d, Conn_handles %d \n\r",Connection_Handle, conn_handles[Connection_Handle]);
+                  if(Connection_Handle==num_of_connections)
+                  {
+                    Connection_Handle = 0;
+                    app_log("PHY Changes concluded - Press PB0 to start the test\r\n");
+                    SM_status = WAITING_FOR_TEST_TO_START;
+                  }
+              }
+              break;
+
       case WAITING_FOR_TEST_TO_START:{
 
           if(( GPIO_PinInGet(gpioPortD,2)==0))//&&(connections_finished == 1))
@@ -395,6 +431,18 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
           connections_finished = 1;
 
       }
+
+      break;
+
+    case sl_bt_evt_connection_phy_status_id:
+
+
+      if((evt->data.evt_connection_phy_status.phy == DESIRED_PHY))
+        {
+          PHY_Change_finished = 1;
+          app_log("PHY Changed \n\r");
+        }
+
 
       break;
 
