@@ -58,7 +58,7 @@
       <informativeText/>
       <value length="64" type="hex" variable_length="false">00</value>
       <properties>
-        <write authenticated="false" bonded="false" encrypted="false"/>
+        <write_no_response authenticated="false" bonded="false" encrypted="false"/>
       </properties>
     </characteristic>
   </service>

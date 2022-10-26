@@ -36,15 +36,18 @@
 #include "sl_simple_button_instances.h"
 #include "sl_simple_led_instances.h"
 
-#define SIGNAL_BTN_PRESS  1
+
 
 #define CHAR_HANDLE       17
-#define PAYLOAD_LENGTH    5
+#define PAYLOAD_LENGTH    6
 #define MAX_CONNECTIONS   32
 
-#define CONN_INTERVAL     160
+#define CONN_INTERVAL     80 //Time = CONN_INTERVAL x 1.25 ms
 
 #define USE_WRITE_WITH_RESPONSE 0
+
+#define CHANGE_MTU
+#define MAX_MTU 70
 
 //1s is 32768 tick
 #define TIMER_1S_PERIOD 32768
@@ -53,14 +56,15 @@
 
 #define DESIRED_PHY 2 //2M PHY
 
-uint8_t payload[PAYLOAD_LENGTH] = {3};
 
-uint16_t payload_sent_len;
 
 typedef struct conn_data{
   uint8_t conn_handle;
   uint8_t char_handle;
 }conn_data;
+
+
+
 
 
 static uint8_t conn_handles[MAX_CONNECTIONS];
@@ -71,17 +75,24 @@ static uint16_t v_major, v_minor, v_patch;
 volatile uint64_t tick_start_array[MAX_CONNECTIONS +1];
 volatile uint64_t tick_end_array[MAX_CONNECTIONS + 1];
 volatile uint8_t received_cnt_array[MAX_CONNECTIONS + 1];
-//uint32_t latency_msec_array[MAX_CONNECTIONS];
-//uint32_t elapsed_time_array[MAX_CONNECTIONS];;
+
 
 static uint32_t latency_msec, elapsed_time;
 
 static uint8_t connections_finished = 0;
-static uint8_t PHY_Change_finished = 0;
+
 static uint8_t Connection_Handle = 0;
 static uint8_t Responses_received = 0;
 static uint8_t Tx_count = 0;
 static bool conn_in_progress = false;
+
+uint8_t payload[PAYLOAD_LENGTH] = {3};
+
+uint16_t payload_sent_len;
+
+//for BRD4180A use gpioPortD, 2, For BRD4081B/C use gpioPortB, 0,
+#define BUTTON_PORT gpioPortD
+#define BUTTON_PIN 2
 
 /// Type of System State Machine
 typedef enum {
@@ -89,10 +100,7 @@ typedef enum {
   INIT = 0,
   SCANNING_AND_CONNECTING,
   SCAN_STOP,
-  SET_CONNECTION_PHY_2M,
-  WAITING_FOR_PHY_CHANGE,
   WAITING_FOR_TEST_TO_START,
-  //CONNECTING_TO_DEVICES,
   BEFORE_WRITTING,
   WRITTING,
   WAITING_FOR_RESPONSE,
@@ -158,7 +166,7 @@ SL_WEAK void app_init(void)
   // Put your additional application init code here!                         //
   // This is called once during start-up.                                    //
   /////////////////////////////////////////////////////////////////////////////
-  GPIO_PinModeSet(gpioPortD, 2,  gpioModeInput, 0);
+  GPIO_PinModeSet(BUTTON_PORT, BUTTON_PIN,  gpioModeInput, 0);
 
   sl_sleeptimer_init();
 
@@ -195,50 +203,18 @@ SL_WEAK void app_process_action(void)
       case SCAN_STOP:
         {
 
-          app_log("Scanning Period concluded- Changing PHY\r\n");
+          app_log("Scanning Period concluded\n\rNumber of devices connected = %d\r\n", num_of_connections);
+          app_log("Press PB0 to start the Test\r\n");
           sc = sl_bt_scanner_stop();
           app_assert_status(sc);
           SM_status = WAITING_FOR_TEST_TO_START;
           Connection_Handle = 0;
           break;
         }
-      /*case SET_CONNECTION_PHY_2M:
-        SM_status = WAITING_FOR_TEST_TO_START;
-              {
-                app_log("SET_CONNECTION_PHY_2M, %d \n\r", conn_handles[Connection_Handle]);
-                sc = sl_bt_connection_set_preferred_phy(conn_handles[Connection_Handle], DESIRED_PHY, DESIRED_PHY);
-                app_assert_status(sc);
-                PHY_Change_finished = 0;
-                SM_status = WAITING_FOR_PHY_CHANGE;
-              }
-
-              break;
-
-      case WAITING_FOR_PHY_CHANGE:
-              {
-                if((PHY_Change_finished == 1)&&(Connection_Handle<num_of_connections))
-                  {
-                    app_log("PHY Changed to 2M PHY on Connection %d\r\n", conn_handles[Connection_Handle]);
-                    PHY_Change_finished = 0;
-                    Connection_Handle++;
-                    SM_status = SET_CONNECTION_PHY_2M;
-                  }
-                else
-                  //app_log("ConnectionHandle %d, Conn_handles %d \n\r",Connection_Handle, conn_handles[Connection_Handle]);
-                  if(Connection_Handle==num_of_connections)
-                  {
-                    Connection_Handle = 0;
-                    app_log("PHY Changes concluded - Press PB0 to start the test\r\n");
-                    SM_status = WAITING_FOR_TEST_TO_START;
-                  }
-
-              }
-              break;
-              */
 
       case WAITING_FOR_TEST_TO_START:{
 
-          if(( GPIO_PinInGet(gpioPortD,2)==1))//&&(connections_finished == 1))
+          if(( GPIO_PinInGet(gpioPortD,2)==0))//&&(connections_finished == 1))
             {
               app_log("Button pressed, starting the test\r\n");
 
@@ -263,33 +239,7 @@ SL_WEAK void app_process_action(void)
          break;
 
       case WRITTING:
-        /*{
-            if ((conn_handles[Connection_Handle] != 0xFF)&&(Connection_Handle<num_of_connections))
-              {
-                //received_cnt[conn_handles[Connection_Handle]] = 0;
 
-                  tick_start_array[conn_handles[Connection_Handle]] = sl_sleeptimer_get_tick_count64();
-                  app_log("Sending data to connection: %d\r\n", conn_handles[Connection_Handle]);
-                  sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[Connection_Handle], CHAR_HANDLE, PAYLOAD_LENGTH, payload, &payload_sent_len);
-                  app_assert_status(sc);
-                  //SM_status =  WAITING_FOR_RESPONSE;
-               }
-            //In case a device gets disconnected
-            else
-            {
-               Connection_Handle+=1;
-            }
-
-            //Increases the Handle and start the Writting process to another device
-            if(Connection_Handle<num_of_connections)
-            {
-                Connection_Handle+=1;
-            }
-            else if(Connection_Handle==num_of_connections)
-              {
-                SM_status = WAITING_FOR_RESPONSE;
-              }
-        }*/
         {
           for(uint8_t i = 0; i < num_of_connections; i++){
               if (conn_handles[i] != 0xFF){
@@ -320,6 +270,12 @@ SL_WEAK void app_process_action(void)
             {
               SM_status = BEFORE_WRITTING;
             }
+            if(( GPIO_PinInGet(BUTTON_PORT, BUTTON_PIN)==0))
+                       {
+                         app_log("Button pressed, Test Concluded\r\n");
+                         SM_status = TEST_CONCLUDED;
+                       }
+
         }
         break;
       case TEST_CONCLUDED:
@@ -376,6 +332,12 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
 
       sc = sl_bt_connection_set_default_parameters(CONN_INTERVAL, CONN_INTERVAL, 0, CONN_INTERVAL * 3, 0, 0xFFFF);
       app_assert_status(sc);
+
+#ifdef CHANGE_MTU
+      app_log("MAX MTU set to %d bytes\r\n", MAX_MTU );
+      sc = sl_bt_gatt_set_max_mtu(MAX_MTU,0);
+      app_assert_status(sc);
+#endif
 
       app_log("Connection interval set to %d msec\r\n", (5*CONN_INTERVAL)/4 );
 
@@ -444,11 +406,13 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
         app_log("Latency for Connection %d: %d msec\r\n",evt->data.evt_gatt_server_attribute_value.connection, latency_msec);
         //app_log("Packets received from Connection %d: %d \r\n",evt->data.evt_gatt_server_attribute_value.connection, received_cnt_array[evt->data.evt_gatt_server_attribute_value.connection]);
 
+        //Printout the Data received in Hex
         for(uint8_t i=0;i<64;i++)
           {
             app_log("%02X", evt->data.evt_gatt_server_attribute_value.value.data[i]);
           }
         app_log("\n\r");
+
         Responses_received++;
 
         SM_status = RESPONSE_RECEIVED;
@@ -456,12 +420,12 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
       }
       break;
 
-    case sl_bt_evt_system_external_signal_id:
-       if(evt->data.evt_system_external_signal.extsignals == SIGNAL_BTN_PRESS){
-           Connection_Handle = 0;
-           SM_status = BEFORE_WRITTING;
-       }
-        break;
+//    case sl_bt_evt_system_external_signal_id:
+//       if(evt->data.evt_system_external_signal.extsignals == SIGNAL_BTN_PRESS){
+//           Connection_Handle = 0;
+//           SM_status = BEFORE_WRITTING;
+//       }
+//        break;
     // -------------------------------
     // This event indicates that a connection was closed.
     case sl_bt_evt_connection_closed_id:
@@ -499,17 +463,6 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
   }
 }
 
-void sl_button_on_change(const sl_button_t *handle)
-{
-  sl_button_state_t state;
-  if(handle->context == sl_button_btn0.context){
-      state = sl_button_get_state(&sl_button_btn0);
-      if(state == SL_SIMPLE_BUTTON_PRESSED){
-          app_log("Button pressed\r\n");
-          sl_bt_external_signal(SIGNAL_BTN_PRESS);
-      }
-  }
-}
 
 uint8_t app_get_next_connection_slot(void)
 {

@@ -1,17 +1,18 @@
 # SoC - Central_AM
 
-The Bluetooth example is a scanner that looks for a device with a specific service and characteristic. 
+The Bluetooth example is a Central device that scans and connects to up to 32 peripheral devices which advertise a specific service "CC". 
 
-It searches for ConnDev**** devices, scans, writes and reads.
+The Peripheral Device application can be found at: https://github.com/claudioasfilho/bt_AM_Conn_EN
 
-It requires PB0 button to be pressed in order to initiate the read and write process
+Once it finds the device, it will write 6 bytes to the characteristic "C165393CF3374EFD8C8396226D85DE6E" and wait for the peripheral device to write back to its characteristic "AABB". 
 
-DataService - UUID: CC
-   Characteristics:
-      |_ Data_TX -  UUID: 3A4855F62F9C4005815BDF746358668E
-                    Properties: Read - 64 bytes
-      |_ Data_RX -  UUID: C165393CF3374EFD8C8396226D85DE6E
-                    Properties: Read/Write no Response - 6 bytes
+It will printout the data received and the elapsed time in ms between writting and reading.
+
+It requires PB0 button to be pressed in order to initiate the read and write process. 
+
+Please note that if the Radio Board used is not the BRD4180A, it will be required to change the button port and pin definitions on app.c.
+
+
 
 Hardware: EFR31MG21 - BRD4180A
 Compiler: GCC GNU ARM v10.2.1
