@@ -1,6 +1,6 @@
 # SoC - Central_AM
 
-The Bluetooth example is a Central device that scans and connects to up to 32 peripheral devices which advertise a specific service "CC". 
+The Bluetooth example is a Central device that scans and connects to up to 32 peripheral devices which advertise a specific service **"CCCC"**. 
 
 The Peripheral Device application can be found at: https://github.com/claudioasfilho/bt_AM_Conn_EN
 
@@ -10,14 +10,19 @@ It will printout the data received and the elapsed time in ms between writting a
 
 It requires PB0 button to be pressed in order to initiate the read and write process. 
 
-Please note that if the Radio Board used is not the BRD4180A, it will be required to change the button port and pin definitions on app.c.
+# Please note that if the Radio Board used is not the BRD4180A, it will be required to change the button port and pin definitions on app.c.
 
+The device outputs to the serial port with Baudrate of 115200 8-N-1 using ctsrts flow control .
+Unix Screen invoking command: screen /dev/cu.usbmodem0004401694931 115200 ortsfl -rtsflow -ctsflow
 
+**Other details:**
 
-Hardware: EFR31MG21 - BRD4180A
+Hardware: EFR31MG21 - **BRD4180A**
+https://www.silabs.com/documents/public/schematic-files/BRD4180A-hw-design-pkg.zip 
 Compiler: GCC GNU ARM v10.2.1
-Gecko SDK Suite: Amazon 202012.00, Bluetooth 4.2.0, Bluetooth Mesh 3.0.2, EmberZNet 7.1.2.0, Flex 3.4.2.0, HomeKit 1.2.2.0, MCU 6.3.1.0, Matter Demo, Micrium OS Kernel 5.13.10, OpenThread 2.1.2.0 (GitHub-2ce3d3bf0), Platform 4.1.0.0, USB 1.0.0.0, Wi-SUN 1.3.2.0, Z-Wave SDK 7.18.2.0
-Version: 4.1.2
+**Gecko SDK Suite Version: 4.1.2**: Amazon 202012.00, Bluetooth 4.2.0, Bluetooth Mesh 3.0.2, EmberZNet 7.1.2.0, Flex 3.4.2.0, HomeKit 1.2.2.0, MCU 6.3.1.0, Matter Demo, Micrium OS Kernel 5.13.10, OpenThread 2.1.2.0 (GitHub-2ce3d3bf0), Platform 4.1.0.0, USB 1.0.0.0, Wi-SUN 1.3.2.0, Z-Wave SDK 7.18.2.0
+
+
 
 
 ## Resources
