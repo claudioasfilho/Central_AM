@@ -6,11 +6,11 @@ The Peripheral Device application can be found at: https://github.com/claudioasf
 
 Once it finds the device, it will write 6 bytes to the characteristic "C165393CF3374EFD8C8396226D85DE6E" and wait for the peripheral device to write back to its characteristic "AABB". 
 
-It will printout the data received and the elapsed time in ms between writting and reading.
+It will printout the data received and the elapsed time in ms between writting and reading.  An example of the output can be found at **Example_Serial_output.txt**.
 
 It requires PB0 button to be pressed in order to initiate the read and write process. 
 
-# Please note that if the Radio Board used is not the BRD4180A, it will be required to change the button port and pin definitions on app.c.
+ **Please note that if the Radio Board used is not the BRD4180A, it will be required to change the button port and pin definitions on app.c.**
 
 The device outputs to the serial port with Baudrate of 115200 8-N-1 using ctsrts flow control .
 Unix Screen invoking command: screen /dev/cu.usbmodem0004401694931 115200 ortsfl -rtsflow -ctsflow
