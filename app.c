@@ -40,14 +40,16 @@
 
 #define CHAR_HANDLE       17
 #define PAYLOAD_LENGTH    5
-#define MAX_CONNECTIONS   2
+#define MAX_CONNECTIONS   32
 
-#define CONN_INTERVAL     80 //40 msec
+#define CONN_INTERVAL     160
+
+#define USE_WRITE_WITH_RESPONSE 0
 
 //1s is 32768 tick
 #define TIMER_1S_PERIOD 32768
 
-#define SCANNING_TIMEOUT 5*TIMER_1S_PERIOD
+#define SCANNING_TIMEOUT 10*TIMER_1S_PERIOD
 
 #define DESIRED_PHY 2 //2M PHY
 
@@ -66,20 +68,20 @@ static uint8_t num_of_connections = 0;
 
 static uint16_t v_major, v_minor, v_patch;
 
-volatile uint64_t tick_start_array[MAX_CONNECTIONS];
-volatile uint64_t tick_end_array[MAX_CONNECTIONS];
-volatile uint8_t received_cnt_array[MAX_CONNECTIONS];
+volatile uint64_t tick_start_array[MAX_CONNECTIONS +1];
+volatile uint64_t tick_end_array[MAX_CONNECTIONS + 1];
+volatile uint8_t received_cnt_array[MAX_CONNECTIONS + 1];
 //uint32_t latency_msec_array[MAX_CONNECTIONS];
 //uint32_t elapsed_time_array[MAX_CONNECTIONS];;
 
-static uint64_t tick_start, tick_end;
 static uint32_t latency_msec, elapsed_time;
-static uint8_t received_cnt = 0;
 
 static uint8_t connections_finished = 0;
 static uint8_t PHY_Change_finished = 0;
 static uint8_t Connection_Handle = 0;
 static uint8_t Responses_received = 0;
+static uint8_t Tx_count = 0;
+static bool conn_in_progress = false;
 
 /// Type of System State Machine
 typedef enum {
@@ -116,12 +118,10 @@ volatile _32_8bit tick_count;
 // Handle for sleeptimer
 sl_sleeptimer_timer_handle_t my_sleeptimer_handle;
 
-
-
 // Advertised service UUID
 static const uint8_t advertised_service[2] = { 0xCC, 0xCC };
 
-
+uint8_t app_get_next_connection_slot(void);
 /**************************************************************************//**
  * Parse advertisements looking for  a service UUID of the peripheral device
  * @param[in] data: Advertisement packet
@@ -171,15 +171,11 @@ SL_WEAK void app_init(void)
  *****************************************************************************/
 void sleeptimer_cb(sl_sleeptimer_timer_handle_t *handle, void *data)
 {
-
   tick_count.value+=1;
   if(SM_status==SCANNING_AND_CONNECTING){
       SM_status = SCAN_STOP;
   }
-
 }
-
-
 
 /**************************************************************************//**
  * Application Process Action.
@@ -188,10 +184,8 @@ SL_WEAK void app_process_action(void)
 {
   sl_status_t sc;
 
-
   switch(SM_status)
   {
-
     case INIT:
       break;
       case SCANNING_AND_CONNECTING:{
@@ -204,20 +198,20 @@ SL_WEAK void app_process_action(void)
           app_log("Scanning Period concluded- Changing PHY\r\n");
           sc = sl_bt_scanner_stop();
           app_assert_status(sc);
-          SM_status = SET_CONNECTION_PHY_2M;
+          SM_status = WAITING_FOR_TEST_TO_START;
           Connection_Handle = 0;
-
-
           break;
         }
-      case SET_CONNECTION_PHY_2M:
+      /*case SET_CONNECTION_PHY_2M:
+        SM_status = WAITING_FOR_TEST_TO_START;
               {
-               // app_log("SET_CONNECTION_PHY_2M, %d \n\r", conn_handles[Connection_Handle]);
+                app_log("SET_CONNECTION_PHY_2M, %d \n\r", conn_handles[Connection_Handle]);
                 sc = sl_bt_connection_set_preferred_phy(conn_handles[Connection_Handle], DESIRED_PHY, DESIRED_PHY);
                 app_assert_status(sc);
                 PHY_Change_finished = 0;
                 SM_status = WAITING_FOR_PHY_CHANGE;
               }
+
               break;
 
       case WAITING_FOR_PHY_CHANGE:
@@ -230,19 +224,21 @@ SL_WEAK void app_process_action(void)
                     SM_status = SET_CONNECTION_PHY_2M;
                   }
                 else
-                  app_log("ConnectionHandle %d, Conn_handles %d \n\r",Connection_Handle, conn_handles[Connection_Handle]);
+                  //app_log("ConnectionHandle %d, Conn_handles %d \n\r",Connection_Handle, conn_handles[Connection_Handle]);
                   if(Connection_Handle==num_of_connections)
                   {
                     Connection_Handle = 0;
                     app_log("PHY Changes concluded - Press PB0 to start the test\r\n");
                     SM_status = WAITING_FOR_TEST_TO_START;
                   }
+
               }
               break;
+              */
 
       case WAITING_FOR_TEST_TO_START:{
 
-          if(( GPIO_PinInGet(gpioPortD,2)==0))//&&(connections_finished == 1))
+          if(( GPIO_PinInGet(gpioPortD,2)==1))//&&(connections_finished == 1))
             {
               app_log("Button pressed, starting the test\r\n");
 
@@ -255,65 +251,72 @@ SL_WEAK void app_process_action(void)
       case BEFORE_WRITTING:
         {
           Connection_Handle = 0;
-          SM_status = WRITTING;
-
           //Initializes received_cnt_array with Zeros
           for (uint8_t i = 0; i < MAX_CONNECTIONS; i++)
             {
               received_cnt_array[i] = 0;
             }
           Responses_received = 0;
-
+          Tx_count = 0;
+          SM_status = WRITTING;
         }
-              break;
-
+         break;
 
       case WRITTING:
-        {
-
-
+        /*{
             if ((conn_handles[Connection_Handle] != 0xFF)&&(Connection_Handle<num_of_connections))
               {
                 //received_cnt[conn_handles[Connection_Handle]] = 0;
 
-                tick_start_array[conn_handles[Connection_Handle]] = sl_sleeptimer_get_tick_count64();
-
+                  tick_start_array[conn_handles[Connection_Handle]] = sl_sleeptimer_get_tick_count64();
                   app_log("Sending data to connection: %d\r\n", conn_handles[Connection_Handle]);
-                  sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[Connection_Handle], CHAR_HANDLE, PAYLOAD_LENGTH, payload, payload_sent_len);
+                  sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[Connection_Handle], CHAR_HANDLE, PAYLOAD_LENGTH, payload, &payload_sent_len);
                   app_assert_status(sc);
                   //SM_status =  WAITING_FOR_RESPONSE;
                }
             //In case a device gets disconnected
-            else Connection_Handle+=1;
+            else
+            {
+               Connection_Handle+=1;
+            }
 
             //Increases the Handle and start the Writting process to another device
             if(Connection_Handle<num_of_connections)
-                        {
-
-                          Connection_Handle+=1;
-
-                        }
+            {
+                Connection_Handle+=1;
+            }
             else if(Connection_Handle==num_of_connections)
               {
-
-
                 SM_status = WAITING_FOR_RESPONSE;
-
               }
-
+        }*/
+        {
+          for(uint8_t i = 0; i < num_of_connections; i++){
+              if (conn_handles[i] != 0xFF){
+                 tick_start_array[conn_handles[i]] = sl_sleeptimer_get_tick_count64();
+                 app_log("Sending data to connection: %d\r\n", conn_handles[i]);
+#if USE_WRITE_WITH_RESPONSE
+                 sc = sl_bt_gatt_write_characteristic_value(conn_handles[i], CHAR_HANDLE, PAYLOAD_LENGTH, payload);
+#else
+                 sc = sl_bt_gatt_write_characteristic_value_without_response(conn_handles[i], CHAR_HANDLE, PAYLOAD_LENGTH, payload, &payload_sent_len);
+#endif
+                 app_assert_status(sc);
+                 Tx_count++;
+              }
+          }
+          SM_status =  WAITING_FOR_RESPONSE;
         }
 
         break;
       case WAITING_FOR_RESPONSE:
               {
-                app_log("Connection_handle: %d\r\n", Connection_Handle);
+                //app_log("Connection_handle: %d\r\n", Connection_Handle);
               }
               break;
 
       case RESPONSE_RECEIVED:
         {
-
-            if (Responses_received==num_of_connections)
+            if (Responses_received==Tx_count)
             {
               SM_status = BEFORE_WRITTING;
             }
@@ -326,9 +329,6 @@ SL_WEAK void app_process_action(void)
         break;
 
   }
-
-
-
 }
 
 /**************************************************************************//**
@@ -343,6 +343,7 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
   bd_addr address;
   uint8_t address_type;
   uint8_t system_id[8];
+  uint8_t conn_slot;
 
   switch (SL_BT_MSG_ID(evt->header)) {
     // -------------------------------
@@ -373,81 +374,66 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
                 address.addr[1], address.addr[0]);
 
 
-      sc = sl_bt_connection_set_default_parameters(CONN_INTERVAL, CONN_INTERVAL, 0, CONN_INTERVAL * 5, 0, 0xFFFF);
+      sc = sl_bt_connection_set_default_parameters(CONN_INTERVAL, CONN_INTERVAL, 0, CONN_INTERVAL * 3, 0, 0xFFFF);
       app_assert_status(sc);
 
-      app_log("Connection interval set to %d msec\r\n",CONN_INTERVAL );
+      app_log("Connection interval set to %d msec\r\n", (5*CONN_INTERVAL)/4 );
 
       sc = sl_bt_scanner_start(sl_bt_scanner_scan_phy_1m,
                                sl_bt_scanner_discover_generic);
       app_assert_status(sc);
       app_log("Scanning started\r\n");
 
-
       //Initiates Scanner Counter timer
       sc = sl_sleeptimer_start_timer(&my_sleeptimer_handle,  SCANNING_TIMEOUT, sleeptimer_cb, (void *)NULL,0,0);
       app_assert_status(sc);
 
-
       SM_status = SCANNING_AND_CONNECTING;
-
-
-
       break;
 
     case sl_bt_evt_scanner_legacy_advertisement_report_id:
-
-      if(find_service_in_advertisement(evt->data.evt_scanner_legacy_advertisement_report.data.data, evt->data.evt_scanner_legacy_advertisement_report.data.len)){
-
-          app_log("Device found\r\n");
-          sc = sl_bt_connection_open(evt->data.evt_scanner_legacy_advertisement_report.address,
-                                sl_bt_gap_public_address,
-                                sl_bt_gap_phy_1m,
-                                &conn_handles[num_of_connections]);
-          app_assert_status(sc);
+      if(conn_in_progress == false){
+        if(find_service_in_advertisement(evt->data.evt_scanner_legacy_advertisement_report.data.data, evt->data.evt_scanner_legacy_advertisement_report.data.len)){
+            //app_log("Device found\r\n");
+            conn_slot = app_get_next_connection_slot();
+            if (conn_slot != 0xFF){
+                sc = sl_bt_connection_open(evt->data.evt_scanner_legacy_advertisement_report.address,
+                                      sl_bt_gap_public_address,
+                                      sl_bt_gap_phy_1m,
+                                      &conn_handles[conn_slot]);
+                app_assert_status(sc);
+                conn_in_progress = true;
+                app_log("Connection request sent, handle: %d\r\n", conn_handles[conn_slot]);
+            }
+        }
       }
       break;
-
-    case sl_bt_evt_scanner_scan_report_id:
-      app_log("Scan report\r\n");
-      break;
-
 
     case sl_bt_evt_connection_parameters_id:
       //app_log("connection interval: %d\r\n", evt->data.evt_connection_parameters.interval);
       break;
+
     // -------------------------------
     // This event indicates that a new connection was opened.
     case sl_bt_evt_connection_opened_id:
-
       num_of_connections++;
-      app_log("Connection opened, number of connections: %d\r\n", num_of_connections);
+      conn_in_progress = false;
+      app_log("Connection opened, number of connections: %d, connection handle: %d\r\n", num_of_connections, evt->data.evt_connection_opened.connection);
+      sl_bt_connection_set_preferred_phy(evt->data.evt_connection_opened.connection, DESIRED_PHY, DESIRED_PHY);
       if (num_of_connections >= MAX_CONNECTIONS){
 
           app_log("Max number of connections achieved -  %d Connections \r\n", num_of_connections);
           connections_finished = 1;
-
+          sl_bt_scanner_stop();
       }
-
       break;
 
     case sl_bt_evt_connection_phy_status_id:
-
-
-      if((evt->data.evt_connection_phy_status.phy == DESIRED_PHY))
-        {
-          PHY_Change_finished = 1;
-          app_log("PHY Changed \n\r");
-        }
-
-
+      app_log("connection %d, PHY: %d \n\r", evt->data.evt_connection_phy_status.connection, evt->data.evt_connection_phy_status.phy);
       break;
-
-
     case sl_bt_evt_gatt_server_attribute_value_id:
       {
         received_cnt_array[evt->data.evt_gatt_server_attribute_value.connection]++;
-
 
         tick_end_array[evt->data.evt_gatt_server_attribute_value.connection] = sl_sleeptimer_get_tick_count64();
         elapsed_time = tick_end_array[evt->data.evt_gatt_server_attribute_value.connection] - tick_start_array[evt->data.evt_gatt_server_attribute_value.connection];
@@ -471,20 +457,27 @@ void sl_bt_on_event(sl_bt_msg_t *evt)
       break;
 
     case sl_bt_evt_system_external_signal_id:
-       if(evt->data.evt_system_external_signal.extsignals == SIGNAL_BTN_PRESS){}
-
-         break;
+       if(evt->data.evt_system_external_signal.extsignals == SIGNAL_BTN_PRESS){
+           Connection_Handle = 0;
+           SM_status = BEFORE_WRITTING;
+       }
+        break;
     // -------------------------------
     // This event indicates that a connection was closed.
     case sl_bt_evt_connection_closed_id:
-      app_log("connection closed\r\n");
+      app_log("Connection: %d closed, reason: %x\r\n", evt->data.evt_connection_closed.connection, evt->data.evt_connection_closed.reason);
+      if (evt->data.evt_connection_closed.reason == SL_STATUS_BT_CTRL_CONNECTION_FAILED_TO_BE_ESTABLISHED){
+          conn_in_progress = false;
+      }
       for (uint8_t i = 0; i < MAX_CONNECTIONS; i++){
-               if (conn_handles[i] == evt->data.evt_connection_closed.connection){
-                   conn_handles[i] = 0xFF;
-                   break;
-               }
-           }
+         if (conn_handles[i] == evt->data.evt_connection_closed.connection){
+             app_log("Connection ID %d removed\r\n", i);
+             conn_handles[i] = 0xFF;
+             break;
+         }
+       }
       num_of_connections--;
+      app_log("Number of connections: %d\r\n", num_of_connections);
       if (num_of_connections < MAX_CONNECTIONS){
             sc = sl_bt_scanner_start(sl_bt_scanner_scan_phy_1m,
                                      sl_bt_scanner_discover_generic);
@@ -512,7 +505,19 @@ void sl_button_on_change(const sl_button_t *handle)
   if(handle->context == sl_button_btn0.context){
       state = sl_button_get_state(&sl_button_btn0);
       if(state == SL_SIMPLE_BUTTON_PRESSED){
+          app_log("Button pressed\r\n");
           sl_bt_external_signal(SIGNAL_BTN_PRESS);
       }
   }
+}
+
+uint8_t app_get_next_connection_slot(void)
+{
+ for (uint8_t i = 0; i < MAX_CONNECTIONS; i++){
+     if (conn_handles[i] == 0xFF)
+       {
+         return i;
+       }
+ }
+ return 0xFF;
 }

@@ -2,14 +2,16 @@
 
 The Bluetooth example is a scanner that looks for a device with a specific service and characteristic. 
 
-It advertises as ConnDev****, where the last 4 digits are the two last bytes of the device Mac Address.
+It searches for ConnDev**** devices, scans, writes and reads.
+
+It requires PB0 button to be pressed in order to initiate the read and write process
 
 DataService - UUID: CC
    Characteristics:
       |_ Data_TX -  UUID: 3A4855F62F9C4005815BDF746358668E
                     Properties: Read - 64 bytes
       |_ Data_RX -  UUID: C165393CF3374EFD8C8396226D85DE6E
-                    Properties: Read/Write no Response - 5 bytes
+                    Properties: Read/Write no Response - 6 bytes
 
 Hardware: EFR31MG21 - BRD4180A
 Compiler: GCC GNU ARM v10.2.1
